@@ -4,6 +4,7 @@ var STATUS_PENDING = 1;
 var STATUS_DONE = 2;
 
 var LRU = require('lru-cache');
+var lruDisk = require('@ironfly/lru-diskcache');
 var EventEmitter = require('events').EventEmitter;
 var LinkedList = require('linkedlist');
 var Streams = require('stream');
@@ -15,10 +16,31 @@ var DEFAULT_LENGTH = function (value) {
     return value.data ? value.data.length : 1;
 };
 
-var StreamingCache = function StreamingCache(options) {
+var StreamingCache = function StreamingCache(options) {    
+    if (typeof options.disk !== 'boolean') {
+        options.disk = false;
+    }
+    
+    if (typeof options.location !== 'string') {
+        options.location = './cache';
+    }
+    
+    this.disk = options.disk;
+    
+    let ops = { max: 1000 * 1024 * 1024, maxAge: 1000 * 60 * 60 * 24 };
+    ops = Object.assign(ops, options);
+    
+    if (this.disk) {
+        this.diskCache = lruDisk(options.location, ops);
+        this.diskCache.init();
+        this.diskCache.reset();
+        
+        ops.dispose = this.diskCache._dispose.bind(this.diskCache);
+    }
+
     this.cache = LRU(assign({ length: DEFAULT_LENGTH }, options));
     this.emitters = {};
-
+    
     Object.defineProperties(this, {
         'length': {
             get: function () {
@@ -85,9 +107,7 @@ StreamingCache.prototype.getMetadata = function (key) {
 
 StreamingCache.prototype.exists = function (key) {
     utils.ensureDefined(key, 'Key');
-
-    var hit = this.cache.has(key);
-    return hit;
+    return this.cache.has(key);
 };
 
 StreamingCache.prototype.del = function (key) {
@@ -124,9 +144,18 @@ StreamingCache.prototype.get = function (key) {
         return this.returnPendingStream(key);
     }
 
-    var stream = new ReadStream();
-    stream.setBuffer(hit.data);
-    return stream;
+    if (this.disk) {
+        if (!this.diskCache.has(key)) {
+            return undefined;
+        }
+
+        return this.diskCache.getStream(key);
+    } else {
+        var stream = new ReadStream();
+        stream.setBuffer(hit.data);
+        return stream;
+    }
+
 };
 
 StreamingCache.prototype.set = function (key) {
@@ -201,10 +230,17 @@ StreamingCache.prototype.set = function (key) {
                 length: buffer.toString().length,
                 byteLength: buffer.byteLength
             });
+            
             utils.assign(hit, {
-                data: buffer,
                 status: STATUS_DONE
             });
+
+            if (self.disk) {
+                self.diskCache.set(key, buffer);
+            } else {
+                hit.data = buffer;
+            }
+
             self.cache.set(key, hit);
         }
 
