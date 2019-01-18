@@ -16,22 +16,19 @@ var DEFAULT_LENGTH = function (value) {
     return value.data ? value.data.length : 1;
 };
 
-var StreamingCache = function StreamingCache(options) {    
+var StreamingCache = function StreamingCache(options) {
     if (typeof options.disk !== 'boolean') {
         options.disk = false;
     }
-    
+
     if (typeof options.location !== 'string') {
         options.location = './cache';
     }
-    
+
     this.disk = options.disk;
-    
-    let ops = { max: 1000 * 1024 * 1024, maxAge: 1000 * 60 * 60 * 24 };
 
     let ops = { max: 1000 * 1024 * 1024, maxAge: 1000 * 60 * 60 * 24 * 365 };
     ops = Object.assign(ops, options);
-    
 
     if (this.disk) {
         this.diskCache = lruDisk(options.location, Object.assign(ops, {
@@ -47,7 +44,6 @@ var StreamingCache = function StreamingCache(options) {
 
     this.cache = LRU(assign({ length: DEFAULT_LENGTH }, options));
     this.emitters = {};
-    
 
     Object.defineProperties(this, {
         'length': {
@@ -238,7 +234,6 @@ StreamingCache.prototype.set = function (key) {
                 length: buffer.toString().length,
                 byteLength: buffer.byteLength
             });
-            
 
             utils.assign(hit, {
                 status: STATUS_DONE
