@@ -4,7 +4,7 @@ var STATUS_PENDING = 1;
 var STATUS_DONE = 2;
 
 var LRU = require('lru-cache');
-var lruDisk = require('@ironfly/lru-diskcache');
+var lruDisk = require('lru-diskcache');
 var EventEmitter = require('events').EventEmitter;
 var LinkedList = require('linkedlist');
 var Streams = require('stream');
@@ -28,19 +28,27 @@ var StreamingCache = function StreamingCache(options) {
     this.disk = options.disk;
     
     let ops = { max: 1000 * 1024 * 1024, maxAge: 1000 * 60 * 60 * 24 };
+
+    let ops = { max: 1000 * 1024 * 1024, maxAge: 1000 * 60 * 60 * 24 * 365 };
     ops = Object.assign(ops, options);
     
+
     if (this.disk) {
-        this.diskCache = lruDisk(options.location, ops);
+        this.diskCache = lruDisk(options.location, Object.assign(ops, {
+            max: options.maxDisk,
+            dispose: ((k, v) => {
+                this.cache.del(k);
+            })
+        }));
+
         this.diskCache.init();
         this.diskCache.reset();
-        
-        ops.dispose = this.diskCache._dispose.bind(this.diskCache);
     }
 
     this.cache = LRU(assign({ length: DEFAULT_LENGTH }, options));
     this.emitters = {};
     
+
     Object.defineProperties(this, {
         'length': {
             get: function () {
@@ -231,6 +239,7 @@ StreamingCache.prototype.set = function (key) {
                 byteLength: buffer.byteLength
             });
             
+
             utils.assign(hit, {
                 status: STATUS_DONE
             });
